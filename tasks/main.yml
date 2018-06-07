@@ -1,0 +1,96 @@
+---
+- name: change hostname
+  hostname:
+    name: "{{ inventory_hostname }}"
+
+- name: install requirement pip package
+  pip:
+    name: "{{ item }}"
+  with_items:
+    - psycopg2
+    - psycopg2-binary
+
+- name: Add IP address of all hosts to all hosts
+  lineinfile:
+    dest: /etc/hosts
+    line: "{{ hostvars[item].ip }} {{ hostvars[item].inventory_hostname }}"
+    state: present
+  with_items: "{{ groups.postgresql }}"
+
+- name: install postgresql
+  apt:
+    name: "{{ item }}"
+    update_cache: yes
+  with_items:
+    - postgresql
+    - postgresql-client
+    - postgresql-contrib
+
+- name: create user replication
+  become: true
+  become_user: postgres
+  postgresql_user:
+    name: replica
+    role_attr_flags: LOGIN,REPLICATION
+
+- name: copy template postgresql.conf
+  template:
+    src: postgresql.conf.j2
+    dest: "{{ etc_directory }}/postgresql.conf"
+    mode: 0644
+    owner: postgres
+    group: postgres
+
+- name: copy template pg_hba.conf
+  template:
+    src: pg_hba.conf.j2
+    dest: "{{ etc_directory }}/pg_hba.conf"
+    mode: 0644
+    owner: postgres
+    group: postgres
+  with_items:
+    - "{{ groups.postgresql }}"
+
+- name: restart service postgres
+  systemd:
+    name:  postgresql.service
+    state: restarted
+
+- name: stop service postgres
+  systemd:
+    name:  postgresql.service
+    state: stopped
+  when: inventory_hostname == 'slave-server'
+
+- name: delete exist main directory
+  become: true
+  become_user: postgres
+  shell: rm -rf 10/main
+  when: ansible_hostname == 'slave-server'
+
+- name: copying file database
+  become: true
+  become_user: postgres
+  shell: "pg_basebackup -h {{ hostvars[item].ip }} -D /var/lib/postgresql/10/main -U replica -v -P"
+  when: ansible_hostname == 'slave-server'
+  with_items:
+    - master-server  
+
+- name: add recovery.conf
+  become: true
+  become_user: postgres
+  template:
+    src: recovery.conf.j2
+    dest: /var/lib/postgresql/10/main/recovery.conf
+    mode: 0644
+    owner: postgres
+    group: postgres
+  when: ansible_hostname == 'slave-server'
+  with_items:
+    - master-server  
+
+- name: start service postgres
+  systemd:
+    name:  postgresql.service
+    state: started
+  when: inventory_hostname == 'slave-server'

@@ -1,0 +1,3 @@
+user: replica
+password: secret
+etc_directory: /etc/postgresql/10/main

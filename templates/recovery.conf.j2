@@ -1,0 +1,4 @@
+standby_mode = 'on'
+primary_conninfo = 'host={{ hostvars[item].ip }} port=5432 user=replica'
+restore_command = 'cp //var/lib/postgresql/10/main/archive/%f %p'
+trigger_file = '/tmp/postgresql.trigger.5432'
